@@ -1,0 +1,92 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SRSS.IAM.Repositories.Entities;
+
+namespace SRSS.IAM.Repositories.Configurations
+{
+    public class SystematicReviewProjectConfiguration : IEntityTypeConfiguration<SystematicReviewProject>
+    {
+        public void Configure(EntityTypeBuilder<SystematicReviewProject> builder)
+        {
+            builder.ToTable("systematic_review_projects");
+
+            builder.HasKey(p => p.Id);
+
+            builder.Property(p => p.Id)
+                .HasColumnName("id")
+                .IsRequired();
+
+            builder.Property(p => p.Title)
+                .HasColumnName("title")
+                .HasMaxLength(500)
+                .IsRequired();
+            
+            builder.Property(p => p.Code)
+                .HasColumnName("code")
+                .HasMaxLength(100)
+                .IsRequired();
+
+            builder.Property(p => p.Domain)
+                .HasColumnName("domain")
+                .HasMaxLength(255);
+
+            builder.Property(p => p.Description)
+                .HasColumnName("description")
+                .HasMaxLength(2000);
+
+            builder.Property(p => p.ResearchTopic)
+                .HasColumnName("research_topic")
+                .HasMaxLength(2000);
+
+            builder.Property(p => p.ResearchObjective)
+                .HasColumnName("research_objective")
+                .HasMaxLength(2000);
+
+            builder.Property(p => p.Status)
+                .HasColumnName("status")
+                .HasConversion<string>()
+                .IsRequired();
+
+            builder.Property(p => p.StartDate)
+                .HasColumnName("start_date");
+
+            builder.Property(p => p.EndDate)
+                .HasColumnName("end_date");
+
+            builder.Property(p => p.CreatedAt)
+                .HasColumnName("created_at")
+                .IsRequired();
+
+            builder.Property(p => p.ModifiedAt)
+                .HasColumnName("modified_at")
+                .IsRequired();
+
+            // One-to-Many Relationship: SystematicReviewProject ? ReviewProcesses
+            builder.HasMany(p => p.ReviewProcesses)
+                .WithOne(rp => rp.Project)
+                .HasForeignKey(rp => rp.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // One-to-Many Relationship: SystematicReviewProject ? Papers
+            builder.HasMany(p => p.Papers)
+                .WithOne(pr => pr.Project)
+                .HasForeignKey(pr => pr.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(p => p.ProjectPicocs)
+                .WithOne(pp => pp.Project)
+                .HasForeignKey(pp => pp.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Indexes
+            builder.HasIndex(p => p.Status)
+                .HasDatabaseName("idx_project_status");
+
+            builder.HasIndex(p => p.Title)
+                .HasDatabaseName("idx_project_title");
+
+            builder.HasIndex(p => p.Code)
+                .IsUnique()
+                .HasDatabaseName("idx_project_code");
+        }
+    }
+}

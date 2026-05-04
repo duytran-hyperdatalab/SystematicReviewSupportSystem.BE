@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: srss
+  namespace: amayakuro
+
+spec:
+  rules:
+  - host: srss.amayakuro.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: srss-service
+            port:
+              number: 80
+
+  - host: srss-db.amayakuro.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: srss-iam-db-service
+            port:
+              number: 5432
