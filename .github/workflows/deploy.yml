@@ -1,61 +1,96 @@
-name: Build image and deploy to k8s
+name: CI/CD — Build & Deploy BE to DigitalOcean
 
 on:
-   push:
-      branches: ["main"]
+  push:
+    branches: ["main"]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/srss-be-api
 
 jobs:
-   build-and-push:
-      runs-on: ubuntu-latest
-      permissions:
-         contents: read
-         packages: write
+  # ─────────────────────────────────────────
+  # JOB 1: Build & Push Docker image lên GHCR
+  # ─────────────────────────────────────────
+  build:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
 
-      steps:
-         - uses: actions/checkout@v5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-         - name: Set up Docker Buildx
-           uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-         - name: Log in to GitHub Container Registry
-           uses: docker/login-action@v3
-           with:
-              registry: ghcr.io
-              username: ${{ github.actor }}
-              password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-         - name: Extract metadata
-           id: meta
-           uses: docker/metadata-action@v5
-           with:
-              images: ghcr.io/${{ github.repository_owner }}/srss-be-api
-              tags: |
-                 type=raw,value=latest,enable={{is_default_branch}}
-                 type=sha
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
 
-         - name: Build and push Docker image
-           uses: docker/build-push-action@v5
-           with:
-              context: ./
-              file: ./SRSS.IAM/SRSS.IAM.API/Dockerfile
-              push: true
-              tags: ${{ steps.meta.outputs.tags }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          dockerfile: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-   deploy-to-k8s:
-      needs: build-and-push
-      runs-on: [self-hosted, kubernetes-hosting]
-      timeout-minutes: 10
-      steps:
-         - name: Checkout code
-           uses: actions/checkout@v5
+  # ─────────────────────────────────────────
+  # JOB 2: Deploy lên DigitalOcean qua SSH
+  # ─────────────────────────────────────────
+  deploy:
+    name: Deploy to DigitalOcean
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
 
-         - name: Set image SHA tag in deployment manifest
-           run: |
-              SHA_TAG="sha-$(echo '${{ github.sha }}' | cut -c1-7)"
-              OWNER="${{ github.repository_owner }}"
-              OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
-              sed -i "s|image: ghcr.io/.*/srss-be-api:.*|image: ghcr.io/${OWNER_LOWER}/srss-be-api:${SHA_TAG}|" SRSS.IAM/SRSS.IAM.API/manifest/deployment.yaml
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            echo "🚀 Starting deployment..."
 
-         - name: Apply manifests
-           run: |
-              kubectl apply -f SRSS.IAM/SRSS.IAM.API/manifest/deployment.yaml
+            # Login GHCR để pull image mới
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull image mới nhất
+            docker pull ghcr.io/${{ github.repository_owner }}/srss-be-api:latest
+
+            # Vào thư mục deploy
+            cd /opt/srss
+
+            # Cập nhật image trong compose và restart chỉ backend
+            docker compose pull backend || true
+            docker compose up -d --no-deps --force-recreate backend
+
+            # Dọn image cũ
+            docker image prune -f
+
+            echo "✅ Deployment complete!"
+            docker compose ps
