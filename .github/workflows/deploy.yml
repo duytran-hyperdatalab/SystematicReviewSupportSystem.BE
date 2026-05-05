@@ -86,11 +86,11 @@ jobs:
             cd /opt/srss
 
             # Cập nhật image trong compose và restart chỉ backend
-            docker compose pull backend || true
-            docker compose up -d --no-deps --force-recreate backend
+            docker compose -f docker-compose.prod.yml pull backend || true
+            docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend
 
             # Dọn image cũ
             docker image prune -f
 
             echo "✅ Deployment complete!"
-            docker compose ps
+            docker compose -f docker-compose.prod.yml ps
