@@ -1,0 +1,102 @@
+# Production compose — DigitalOcean server
+# Chạy: docker compose -f docker-compose.prod.yml up -d
+# KHÔNG có frontend (dùng Vercel)
+# KHÔNG dùng port 80/443/8080 (đã bị hệ thống khác chiếm)
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: srss_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-SRSS.IAM}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Không expose ra ngoài — chỉ internal
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - srss_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: srss_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    # Không expose ra ngoài — chỉ internal
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - srss_net
+
+  backend:
+    image: ghcr.io/duytran-hyperdatalab/srss-be-api:latest
+    container_name: srss_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__SRSS_IAM_DB: "Host=postgres;Port=5432;Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD};Database=${POSTGRES_DB:-SRSS.IAM}"
+      ConnectionStrings__Redis: "redis:6379,allowAdmin=true,connectTimeout=10000,syncTimeout=10000,asyncTimeout=10000,connectRetry=5,abortConnect=false,keepAlive=60"
+      JwtSettings__ValidIssuer: ${JWT_ISSUER}
+      JwtSettings__ValidAudience: ${JWT_AUDIENCE}
+      JwtSettings__SecretKey: ${JWT_SECRET_KEY}
+      JwtSettings__AccessTokenExpirationMinutes: ${JWT_ACCESS_EXPIRY:-15}
+      JwtSettings__RefreshTokenExpirationDays: ${JWT_REFRESH_EXPIRY:-30}
+      # CORS — cập nhật sau khi có Vercel URL
+      CorsSettings__AllowedOrigins__0: ${VERCEL_URL:-https://srss-web.vercel.app}
+      CorsSettings__AllowedOrigins__1: http://168.144.38.133:5000
+      SupabaseSettings__Url: ${SUPABASE_URL}
+      SupabaseSettings__Key: ${SUPABASE_KEY}
+      Grobid__BaseUrl: http://srss_grobid:8070
+      Gemini__ApiKey: ${GEMINI_API_KEY}
+      Gemini__ModelId: ${GEMINI_MODEL_ID:-gemini-2.5-flash}
+      OpenAI__ApiKey: ${OPENAI_API_KEY}
+      OpenAlex__ApiKey: ${OPENALEX_API_KEY}
+      OpenRouter__ApiKey: ${OPENROUTER_API_KEY}
+      OpenRouter__BaseUrl: https://openrouter.ai/api/v1
+      GoogleAuthSettings__ClientId: ${GOOGLE_CLIENT_ID}
+      GoogleAuthSettings__ClientSecret: ${GOOGLE_CLIENT_SECRET}
+    ports:
+      - "5000:8080"   # Port 5000 — chưa ai dùng
+    networks:
+      - srss_net
+
+  # Grobid — chỉ bật khi server có >= 4GB RAM
+  # Bật: docker compose -f docker-compose.prod.yml --profile full up -d
+  grobid:
+    image: lfoppiano/grobid:0.8.1
+    container_name: srss_grobid
+    restart: unless-stopped
+    profiles:
+      - full
+    expose:
+      - "8070"
+    networks:
+      - srss_net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  srss_net:
+    driver: bridge
