@@ -44,6 +44,11 @@ namespace Shared.Middlewares
                 };
             }
 
+            else if (exception is UnauthorizedAccessException)
+            {
+                statusCode = (int)HttpStatusCode.Unauthorized;
+                response = ResponseBuilder.Unauthorized(exception.Message);
+            }
             else
             {
                 // Lỗi không mong đợi
