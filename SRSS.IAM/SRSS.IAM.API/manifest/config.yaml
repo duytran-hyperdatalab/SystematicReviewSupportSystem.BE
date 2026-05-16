@@ -10,7 +10,7 @@ data:
         "AllowedOrigins": [
           "http://localhost:3000",
           "https://systematic-review-support-system-we-woad.vercel.app",
-          "https://srs.hyperdatalab.org"
+          "https://lit.hyperdatalab.org"
         ]
       },
       "JwtSettings": {
