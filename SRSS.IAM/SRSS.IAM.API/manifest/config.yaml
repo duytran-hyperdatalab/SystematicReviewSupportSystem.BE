@@ -9,7 +9,8 @@ data:
       "CorsSettings": {
         "AllowedOrigins": [
           "http://localhost:3000",
-          "https://systematic-review-support-system-we-woad.vercel.app"
+          "https://systematic-review-support-system-we-woad.vercel.app",
+          "https://srs.hyperdatalab.org"
         ]
       },
       "JwtSettings": {
